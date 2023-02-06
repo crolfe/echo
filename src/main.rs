@@ -4,6 +4,8 @@ use actix_web::{web, App, Error, HttpRequest, HttpResponse, HttpServer, Responde
 use futures::StreamExt;
 use serde::Serialize;
 
+mod cli;
+
 #[derive(Serialize)]
 struct ResponseBody<'a> {
     headers: HashMap<&'a str, &'a str>,
@@ -64,18 +66,11 @@ async fn echo_with_body(req: HttpRequest, mut body: web::Payload) -> Result<Http
     }))
 }
 
-fn get_env_var(key: String, default: String) -> String {
-
-    let env_value = match std::env::var(key) {
-        Ok(val) => val,
-        Err(_) => default
-    };
-
-    return env_value
-}
-
 #[actix_rt::main]
 async fn main() -> std::io::Result<()> {
+    let args = cli::parse_args();
+    let listen = format!("{}:{}", args.address, args.port);
+
     // https://patorjk.com/software/taag/#p=display&f=Delta Corps Priest 1&t=echo
     let logo = "
     ┌─┐┌─┐┬ ┬┌─┐
@@ -85,10 +80,7 @@ async fn main() -> std::io::Result<()> {
 
     println!("{}", logo);
 
-    let listen_port = get_env_var(String::from("ECHO_PORT"), String::from("8080"));
-    let listen_addr = get_env_var(String::from("ECHO_LISTEN_ADDR"), String::from("localhost"));
 
-    let listen = format!("{}:{}", listen_addr, listen_port);
     println!("Running on http://{}", listen);
 
     HttpServer::new(|| {
