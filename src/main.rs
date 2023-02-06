@@ -1,9 +1,7 @@
 use std::collections::HashMap;
-use std::env;
 
 use actix_web::{web, App, Error, HttpRequest, HttpResponse, HttpServer, Responder};
 use futures::StreamExt;
-use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
 use serde::Serialize;
 
 #[derive(Serialize)]
@@ -48,7 +46,8 @@ async fn echo_get(req: HttpRequest) -> impl Responder {
         client_ip: copy_client_ip(&req),
     })
 }
-async fn echo_post(req: HttpRequest, mut body: web::Payload) -> Result<HttpResponse, Error> {
+
+async fn echo_with_body(req: HttpRequest, mut body: web::Payload) -> Result<HttpResponse, Error> {
     let mut bytes = web::BytesMut::new();
     while let Some(item) = body.next().await {
         bytes.extend_from_slice(&item?);
@@ -65,28 +64,41 @@ async fn echo_post(req: HttpRequest, mut body: web::Payload) -> Result<HttpRespo
     }))
 }
 
-#[actix_rt::main]
-async fn main() -> std::io::Result<()> {
-    let dc = match env::var("DC") {
+fn get_env_var(key: String, default: String) -> String {
+
+    let env_value = match std::env::var(key) {
         Ok(val) => val,
-        Err(_) => String::from("Unknown"),
+        Err(_) => default
     };
 
-    let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls()).unwrap();
-    builder
-        .set_private_key_file("key.pem", SslFiletype::PEM)
-        .unwrap();
-    builder.set_certificate_chain_file("cert.pem").unwrap();
+    return env_value
+}
 
-    println!("We are running in the following datacenter: {}", dc);
+#[actix_rt::main]
+async fn main() -> std::io::Result<()> {
+    // https://patorjk.com/software/taag/#p=display&f=Delta Corps Priest 1&t=echo
+    let logo = "
+    ┌─┐┌─┐┬ ┬┌─┐
+    ├┤ │  ├─┤│ │
+    └─┘└─┘┴ ┴└─┘
+    ";
+
+    println!("{}", logo);
+
+    let listen_port = get_env_var(String::from("ECHO_PORT"), String::from("8080"));
+    let listen_addr = get_env_var(String::from("ECHO_LISTEN_ADDR"), String::from("localhost"));
+
+    let listen = format!("{}:{}", listen_addr, listen_port);
+    println!("Running on http://{}", listen);
 
     HttpServer::new(|| {
         App::new()
-            .route("/", web::get().to(echo_get))
-            .route("/", web::post().to(echo_post))
+            .route("/get", web::get().to(echo_get))
+            .route("/put", web::put().to(echo_with_body))
+            .route("/patch", web::patch().to(echo_with_body))
+            .route("/post", web::post().to(echo_with_body))
     })
-    .bind("0.0.0.0:8080")?
-    .bind_openssl("0.0.0.0:8443", builder)?
+    .bind(listen)?
     .run()
     .await
 }
